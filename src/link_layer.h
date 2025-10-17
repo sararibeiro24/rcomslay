@@ -6,8 +6,9 @@
 
 typedef enum
 {
-    LlTx,
-    LlRx,
+    LlTx, // Act as transmitter
+    LlRx, // Act as receiver
+
 } LinkLayerRole;
 
 typedef struct

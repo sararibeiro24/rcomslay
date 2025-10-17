@@ -11,8 +11,8 @@
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters)
 {
-    // TODO: Implement this function
-
+    openSerialPort(connectionParameters.serialPort,connectionParameters.baudRate);
+    
     return 0;
 }
 
