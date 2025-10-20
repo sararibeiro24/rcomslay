@@ -12,15 +12,14 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     LinkLayerRole Lrole = (strcmp(role, "tx") == 0) ? LlTx : LlRx;
     LinkLayer parameters = {serialPort, Lrole, baudrate, nTries, timeout};
     
-    int fd = llopen(parameters);
-    if (fd<0){
+    if (llopen(parameters)<0){
         printf("Failed to open\n");
         exit(-1);
     }
     fseek(file, 0, SEEK_END);
     long fileSize = ftell(file);
     fseek(file, 0, SEEK_SET);
-    
+
     if (llclose()) {
         exit (-1);
     }
