@@ -7,13 +7,19 @@
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
 
-int sendFrame(unsigned char A, unsigned char C){
-    unsigned char frame[5];
-    frame[0] = FLAG;
-    frame[1] = A;
-    frame[2] = C;
-    frame[3] = A^C;
-    frame[4] = FLAG;
+int sendFrame(unsigned char A, unsigned char C,unsigned char *data,int dataSize){// afinal meter para que a data tambem consiga se for control meter null ou 0 values na parte da data 
+    unsigned char frame[4096]; 
+    int i = 0;
+
+    frame[i++] = FLAG;
+    frame[i++] = A;
+    frame[i++] = C;
+    frame[i++] = A ^ C; 
+
+    if (data != NULL && dataSize > 0) {
+        
+       
+    frame[i++] = FLAG;
     int bytesW = writeBytesSerialPort(frame,5);
     if (bytesW != 5){
         printf("Error writing into the serial port\n");
@@ -53,7 +59,7 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 {
-    // TODO: Implement this function
+    // TODO: Implement this function(vai ser para o bytestuffing e o ntries)
 
     return 0;
 }
@@ -63,7 +69,7 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    // TODO: Implement this function
+    // TODO: Implement this function(recebe os frames e manda ack)
 
     return 0;
 }
