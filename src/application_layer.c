@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #define CTRL_START 0x02
 #define CTRL_END   0x03
@@ -14,87 +15,52 @@
 #define T_FILE_SIZE 0x00
 #define T_FILE_NAME 0x01
 
-#define MAX_PACKET_SIZE 1024
+// Definimos o tamanho máximo para o payload de DADOS (buffer que vai para llwrite)
+#define MAX_PAYLOAD_SIZE 1000 
+#define MAX_PACKET_SIZE 1024 // Buffer geral
 
-void applicationLayer(const char *serialPort, const char *role, int baudRate,
-                      int nTries, int timeout, const char *filename)
-{
-    // 1. Inicializa a struct e preenche o serialPort
-    LinkLayer connectionParameters = {
-        .serialPort="",
-        .role = strcmp(role, "tx") == 0 ? LlTx : LlRx,
-        .baudRate = baudRate,
-        .nRetransmissions = nTries,
-        .timeout = timeout};
-    strcpy(connectionParameters.serialPort, serialPort);
+// Variável para controlar o número de sequência dos pacotes de dados
+static unsigned char N_DATA = 0; 
 
-    FILE *file = fopen(filename, "rb");
 
-    // Verifica se o ficheiro abriu corretamente
-    if (file == NULL) {
-        perror("Erro ao abrir ficheiro");
-        exit(-1);
-    }
-    
-    // CORRIGIDO: Usar 'file' (FILE *) em vez de 'filename' (const char *)
-    fseek(file, 0, SEEK_END); // Antigo: fseek(filename, 0, SEEK_END);
-    long fileSize = ftell(file);    // Antigo: long fileSize = ftell(filename);
-    fseek(file, 0, SEEK_SET);  // Antigo: fseek(filename, 0, SEEK_SET);
+int buildDataPacket(unsigned char *packet, const unsigned char *data, int dataSize);
+int buildEndPacket(unsigned char *packet, long fileSize, const char *filename);
+int buildStartPacket(unsigned char *packet, long fileSize, const char *filename);
 
-    // Variável para armazenar o File Descriptor (fd) retornado por llopen
-    int fd = llopen(connectionParameters);
-    
-    // 2. Chama llopen com a struct connectionParameters
-    if (fd < 0){ // Antigo: if (llopen(parameters)<0){
-        printf("Failed to open link layer connection.\n");
-        // Fecha o ficheiro antes de sair
-        fclose(file); 
-        exit(-1);
-    }
+int buildDataPacket(unsigned char *packet, const unsigned char *data, int dataSize) {
+    int i = 0;
 
-    // --- CÓDIGO DO TRANSMISSOR: ENVIAR START PACKET E DADOS ---
-    if (connectionParameters.role == LlTx) {
-        printf("TX AL: Ligação estabelecida. Tamanho do ficheiro: %ld bytes.\n", fileSize);
+    // 1. Control field (C)
+    packet[i++] = CTRL_DATA;
 
-        // TODO: Enviar Start Control Packet (usando buildStartPacket e llwrite)
-        // unsigned char startPacket[MAX_PACKET_SIZE];
-        // int packetSize = buildStartPacket(startPacket, fileSize, filename);
-        // llwrite(fd, startPacket, packetSize);
+    // 2. Sequence Number (N)
+    // Usamos N_DATA e depois incrementamos. O N_DATA só usa o bit 0-255.
+    packet[i++] = N_DATA; 
+    N_DATA = (N_DATA + 1) % 256;
 
-        // TODO: Enviar Data Packets (lendo do 'file' e usando llwrite)
-        // ...
+    // 3. Length fields (L2, L1) - L = L2*256 + L1
+    // L é o tamanho dos dados (dataSize)
+    unsigned short length = (unsigned short)dataSize;
+    packet[i++] = (unsigned char)((length >> 8) & 0xFF); // L2 (Most Significant Byte)
+    packet[i++] = (unsigned char)(length & 0xFF);        // L1 (Least Significant Byte)
 
-        // TODO: Enviar End Control Packet (usando llwrite)
-        // ...
-    }
-    // --- FIM DO CÓDIGO DO TRANSMISSOR ---
+    // 4. Data payload (P1...Pk)
+    memcpy(&packet[i], data, dataSize);
+    i += dataSize;
 
-    // 3. Fecha a ligação da camada de ligação, passando o fd e o role
-    if (llclose(fd, connectionParameters.role) < 0) { // Antigo: if (llclose())
-        printf("Failed to close link layer connection.\n");
-        // Fecha o ficheiro antes de sair
-        fclose(file); 
-        exit (-1);
-    }
-
-    // 4. Fecha o ficheiro da camada de aplicação
-    fclose(file);
-    printf("Transferência concluída e ficheiro fechado.\n");
+    return i; // Total size of the data packet
 }
 
-int buildStartPacket(unsigned char *packet, long fileSize, const char *filename) {
+
+int buildEndPacket(unsigned char *packet, long fileSize, const char *filename) {
     int i = 0;
 
     // Control field
-    packet[i++] = CTRL_START;
+    packet[i++] = CTRL_END;
 
     // --- File size TLV ---
     packet[i++] = T_FILE_SIZE;      
-    
-    // O tamanho do campo LENGTH é o tamanho do valor (sizeof(long))
     packet[i++] = sizeof(long);     
-    
-    // Coloca o tamanho do ficheiro (8 bytes no meu sistema, big-endian)
     for (int u = sizeof(long) - 1; u >= 0; u--) { 
         packet[i++] = (fileSize >> (8 * u)) & 0xFF;
     }
@@ -106,5 +72,150 @@ int buildStartPacket(unsigned char *packet, long fileSize, const char *filename)
     memcpy(&packet[i], filename, nameLen);
     i += nameLen;
 
-    return i; // total size of packet
+    return i;
+}
+
+
+int buildStartPacket(unsigned char *packet, long fileSize, const char *filename) {
+    int i = 0;
+
+    // Control field
+    packet[i++] = CTRL_START;
+
+    // --- File size TLV ---
+    packet[i++] = T_FILE_SIZE;      
+    packet[i++] = sizeof(long);     
+    for (int u = sizeof(long) - 1; u >= 0; u--) { 
+        packet[i++] = (fileSize >> (8 * u)) & 0xFF;
+    }
+
+    // --- File name TLV ---
+    int nameLen = strlen(filename);
+    packet[i++] = T_FILE_NAME;      
+    packet[i++] = nameLen;          
+    memcpy(&packet[i], filename, nameLen);
+    i += nameLen;
+
+    return i;
+}
+
+
+void applicationLayer(const char *serialPort, const char *role, int baudRate,
+                      int nTries, int timeout, const char *filename)
+{
+    int fd;
+    
+    // 1. Inicializa a struct e preenche o serialPort
+    LinkLayer connectionParameters = {
+        .serialPort="",
+        .role = strcmp(role, "tx") == 0 ? LlTx : LlRx,
+        .baudRate = baudRate,
+        .nRetransmissions = nTries,
+        .timeout = timeout};
+    
+    strcpy(connectionParameters.serialPort, serialPort); 
+    
+    
+    // 2. Chama llopen com a struct connectionParameters
+    fd = llopen(connectionParameters);
+    
+    if (fd < 0){ 
+        printf("Application Layer: Falha ao abrir a ligação.\n");
+        exit(-1);
+    }
+    
+    printf("Application Layer: Ligação estabelecida (FD: %d).\n", fd);
+
+    // --- CÓDIGO DO TRANSMISSOR: ENVIAR START PACKET E DADOS ---
+    if (connectionParameters.role == LlTx) {
+        FILE *file = fopen(filename, "rb");
+        long fileSize;
+
+        if (file == NULL) {
+            perror("Application Layer: Erro ao abrir ficheiro para transmissão");
+            llclose(); // Fecha a ligação se o ficheiro falhar
+            exit(-1);
+        }
+        
+        // Calcula o tamanho do ficheiro
+        fseek(file, 0, SEEK_END);
+        fileSize = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        printf("TX AL: Tamanho do ficheiro: %ld bytes. Iniciando transferência...\n", fileSize);
+
+        // ----------------------------------------------------
+        // 3. ENVIO DO START CONTROL PACKET
+        // ----------------------------------------------------
+        unsigned char startPacket[MAX_PACKET_SIZE];
+        int startPacketSize = buildStartPacket(startPacket, fileSize, filename);
+        
+        printf("TX AL: Enviando Start Packet (%d bytes)...\n", startPacketSize);
+        if (llwrite(startPacket, startPacketSize) < 0) {
+            printf("TX AL: Falha ao enviar Start Packet.\n");
+            fclose(file);
+            llclose();
+            exit(-1);
+        }
+
+        // ----------------------------------------------------
+        // 4. ENVIO DOS DATA PACKETS (LOOP)
+        // ----------------------------------------------------
+        unsigned char dataBuffer[MAX_PAYLOAD_SIZE];
+        unsigned char dataPacket[MAX_PACKET_SIZE];
+        int bytesRead;
+        long bytesSent = 0;
+        
+        while ((bytesRead = fread(dataBuffer, 1, MAX_PAYLOAD_SIZE, file)) > 0) {
+            
+            int dataPacketSize = buildDataPacket(dataPacket, dataBuffer, bytesRead);
+            
+            if (llwrite(dataPacket, dataPacketSize) < 0) {
+                printf("TX AL: Falha ao enviar Data Packet na sequência %d.\n", N_DATA);
+                fclose(file);
+                llclose();
+                exit(-1);
+            }
+            bytesSent += bytesRead;
+            printf("TX AL: Enviado Data Packet (N=%d, Bytes=%d). Total: %ld/%ld\r", 
+                   (N_DATA == 0 ? 255 : N_DATA - 1), bytesRead, bytesSent, fileSize);
+            fflush(stdout);
+        }
+        printf("\nTX AL: Todos os dados (%ld bytes) enviados.\n", bytesSent);
+
+        // 5. Fecha o ficheiro de aplicação
+        fclose(file);
+        printf("TX AL: Ficheiro de entrada fechado.\n");
+        
+        // ----------------------------------------------------
+        // 6. ENVIO DO END CONTROL PACKET
+        // ----------------------------------------------------
+        unsigned char endPacket[MAX_PACKET_SIZE];
+        int endPacketSize = buildEndPacket(endPacket, fileSize, filename);
+        
+        printf("TX AL: Enviando End Packet (%d bytes)...\n", endPacketSize);
+        if (llwrite(endPacket, endPacketSize) < 0) {
+            printf("TX AL: Falha ao enviar End Packet.\n");
+            llclose();
+            exit(-1);
+        }
+    }
+    // --- FIM DO CÓDIGO DO TRANSMISSOR ---
+
+    // --- CÓDIGO DO RECETOR: RECEBER START PACKET E DADOS ---
+    else { // LlRx
+        printf("RX AL: Ligação estabelecida. Aguardando Start Packet...\n");
+        // TODO: Chamar llread para receber o Start Packet
+        // TODO: Criar e abrir o ficheiro de saída (com o nome recebido no Start Packet)
+        // TODO: Chamar llread em loop para receber Data Packets
+        // TODO: Fechar o ficheiro de saída
+    }
+    
+    // 7. Fecha a ligação da camada de ligação
+    if (llclose() < 0) { 
+        printf("Application Layer: Falha ao fechar a ligação.\n");
+        exit (-1);
+    }
+
+    printf("Application Layer: Transferência concluída e ligação llclose feita.\n");
 }
