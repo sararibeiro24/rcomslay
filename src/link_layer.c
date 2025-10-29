@@ -16,8 +16,18 @@
 // ----------------------------------------------------
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
+// HDLC Control/Address Fields (Valores padrão)
+#define FLAG 0x7E
+#define A_TRX 0x03  // Endereço para comandos (Tx->Rx)
+#define A_RCV 0x01  // Endereço para respostas (Rx->Tx)
+#define C_SET 0x03  // Set Asynchronous Balanced Mode
+#define C_UA 0x07   // Unnumbered Acknowledge
+#define C_DISC 0x0B // Disconnect
+
+
 int alarmEnabled = FALSE;
 int alarmCount = 0;
+static LinkLayer currentLinkLayer;
 
 // ----------------------------------------------------
 // Alarm Handler
@@ -37,7 +47,7 @@ int sendControlFrame(unsigned char A, unsigned char C)
     frame[0] = FLAG;
     frame[1] = A;
     frame[2] = C;
-    frame[3] = A ^ C;
+    frame[3] = A ^ C; // BCC1
     frame[4] = FLAG;
 
     int bytes_written = writeBytesSerialPort(frame, 5);
@@ -61,8 +71,6 @@ enum State {
     STOP_S
 };
 
-
-// Retorna 1 se a frame esperada for recebida, 0 caso contrário.
 int receiveControlFrame(unsigned char *frame, unsigned char A_expected, unsigned char C_expected)
 {
     enum State state = START_S;
@@ -99,7 +107,7 @@ int receiveControlFrame(unsigned char *frame, unsigned char A_expected, unsigned
                 }
                 else if (byte == FLAG)
                 {
-                    i = 1; // mantém apenas uma FLAG
+                    i = 1;
                 }
                 else
                 {
@@ -179,6 +187,8 @@ int llopen_transmitter(LinkLayer parameters)
     if (fd < 0)
         return -1;
 
+    currentLinkLayer = parameters;
+
     (void)signal(SIGALRM, alarmHandler);
     unsigned char rx_frame[5];
     int success = 0;
@@ -190,7 +200,7 @@ int llopen_transmitter(LinkLayer parameters)
         sendControlFrame(A_TRX, C_SET);
 
         alarmEnabled = TRUE;
-        alarm(parameters.timeout);
+        alarm(parameters.timeout); 
 
         while (alarmEnabled && !success)
         {
@@ -198,7 +208,7 @@ int llopen_transmitter(LinkLayer parameters)
             {
                 printf("TX: UA recebido. Ligação estabelecida.\n");
                 success = 1;
-                alarm(0);
+                alarm(0); 
             }
         }
 
@@ -224,16 +234,22 @@ int llopen_receiver(LinkLayer parameters)
     int fd = openSerialPort(parameters.serialPort, parameters.baudRate);
     if (fd < 0)
         return -1;
+    
+    currentLinkLayer = parameters;
 
     unsigned char rx_frame[5];
     printf("RX: À espera da Frame SET...\n");
 
-    while (!receiveControlFrame(rx_frame, A_TRX, C_SET))
+    while (1) 
     {
-        // continua à espera
+        if (receiveControlFrame(rx_frame, A_TRX, C_SET))
+        {
+            printf("RX: Frame SET recebida.\n");
+            break;
+        }
+       
     }
 
-    printf("RX: Frame SET recebida.\n");
 
     if (sendControlFrame(A_RCV, C_UA) < 0)
     {
@@ -283,20 +299,111 @@ int llread(unsigned char *packet)
 }
 
 // ----------------------------------------------------
-// LLCLOSE
+// LLCLOSE 
 // ----------------------------------------------------
 int llclose()
 {
     printf("\n--- Fechando ligação (llclose) ---\n");
 
-    // TODO: Implementar handshake de fecho (DISC/UA)
-    // Transmissor: envia DISC, espera DISC, envia UA
-    // Recetor: espera DISC, envia DISC, espera UA
+    int success = 0;
+    unsigned char rx_frame[5];
 
+    if (currentLinkLayer.role == LlTx) 
+    {
+        (void)signal(SIGALRM, alarmHandler); 
+
+        for (alarmCount = 0; alarmCount < currentLinkLayer.nRetransmissions && !success;)
+        {
+            printf("TX LLCLOSE: Tentativa %d/%d - Enviando DISC (comando)...\n", alarmCount + 1, currentLinkLayer.nRetransmissions);
+
+            sendControlFrame(A_TRX, C_DISC);
+
+            alarmEnabled = TRUE;
+            alarm(currentLinkLayer.timeout); 
+
+            while (alarmEnabled && !success)
+            {
+               
+                if (receiveControlFrame(rx_frame, A_RCV, C_DISC))
+                {
+                    printf("TX LLCLOSE: DISC (resposta) recebido. Enviando UA...\n");
+                    
+                   
+                    sendControlFrame(A_TRX, C_UA);
+                    
+                    success = 1;
+                    alarm(0);
+                }
+            }
+
+            if (!success)
+                printf("TX LLCLOSE: Timeout. Retransmitindo DISC...\n");
+        }
+
+        if (!success)
+        {
+            printf("TX LLCLOSE: Falha no handshake de fecho após %d tentativas.\n", currentLinkLayer.nRetransmissions);
+        }
+        else {
+            printf("TX LLCLOSE: Handshake de fecho concluído com sucesso.\n");
+        }
+    }
+    else // LlRx
+    {
+        printf("RX LLCLOSE: À espera da Frame DISC (comando)...\n");
+
+        if (!receiveControlFrame(rx_frame, A_TRX, C_DISC)) 
+        {
+            printf("RX LLCLOSE: Falha ao receber DISC.\n");
+        }
+        else
+        {
+            printf("RX LLCLOSE: DISC (comando) recebido. Enviando DISC (resposta)...\n");
+
+            sendControlFrame(A_RCV, C_DISC);
+            
+            (void)signal(SIGALRM, alarmHandler);
+            alarmCount = 0;
+            success = 0; 
+
+            for (alarmCount = 0; alarmCount < currentLinkLayer.nRetransmissions && !success;)
+            {
+                printf("RX LLCLOSE: Tentativa %d/%d - À espera da Frame UA...\n", alarmCount + 1, currentLinkLayer.nRetransmissions);
+                
+                alarmEnabled = TRUE;
+                alarm(currentLinkLayer.timeout); 
+                
+                while (alarmEnabled && !success)
+                {
+                    if (receiveControlFrame(rx_frame, A_TRX, C_UA))
+                    {
+                        printf("RX LLCLOSE: UA recebido. Handshake de fecho concluído.\n");
+                        success = 1;
+                        alarm(0);
+                    }
+                }
+                
+                if (!success)
+                {
+                    printf("RX LLCLOSE: Timeout. Retransmitindo DISC...\n");
+                    sendControlFrame(A_RCV, C_DISC); 
+                }
+            }
+
+            if (!success)
+            {
+                printf("RX LLCLOSE: Falha no handshake de fecho após %d tentativas.\n", currentLinkLayer.nRetransmissions);
+            }
+            else {
+                printf("RX LLCLOSE: Handshake de fecho concluído com sucesso.\n");
+            }
+        }
+    }
+    
     if (closeSerialPort() == 0)
     {
         printf("Porta série fechada com sucesso.\n");
-        return 0;
+        return success ? 0 : -2; 
     }
     else
     {

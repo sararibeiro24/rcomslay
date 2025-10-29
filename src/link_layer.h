@@ -36,6 +36,7 @@ typedef struct
 #define C_DISC 0x0B
 
 
+
 // Open a connection using the "port" parameters defined in struct linkLayer.
 // Return 0 on success or -1 on error.
 int llopen(LinkLayer connectionParameters);
