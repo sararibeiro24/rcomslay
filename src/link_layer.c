@@ -348,33 +348,22 @@ static int byteStuffing(const unsigned char *source, int sourceSize, unsigned ch
     return destIndex; // Retorna o novo tamanho
 }
 
-// ----------------------------------------------------
-// Função Auxiliar: Byte Destuffing (Adicionada)
-// ----------------------------------------------------
-/**
- * Remove byte stuffing de 'source' e coloca o resultado em 'dest'.
- * @param source Dados com stuffing (payload + BCC2)
- * @param sourceSize Tamanho dos dados de entrada
- * @param dest Buffer de destino (payload + BCC2)
- * @return Novo tamanho dos dados em 'dest', ou -1 em caso de erro.
- */
+
 static int byteDestuffing(const unsigned char *source, int sourceSize, unsigned char *dest) {
     int destIndex = 0;
     for (int i = 0; i < sourceSize; i++) {
         if (source[i] == ESCAPE) {
-            i++; // Avança para o próximo byte
+            i++; 
             if (i < sourceSize) {
                 if (source[i] == 0x5E) {
                     dest[destIndex++] = FLAG; // 0x7E
                 } else if (source[i] == 0x5D) {
                     dest[destIndex++] = ESCAPE; // 0x7D
                 } else {
-                    // Erro: byte de escape inválido (deve ser 0x5E ou 0x5D)
                     printf("RX Destuffing: Sequência de escape inválida (0x7D seguido por 0x%02X).\n", source[i]);
                     return -1; 
                 }
             } else {
-                // Erro: ESCAPE no final da sequência
                 printf("RX Destuffing: ESCAPE no final da sequência de dados.\n");
                 return -1; 
             }
@@ -382,19 +371,11 @@ static int byteDestuffing(const unsigned char *source, int sourceSize, unsigned 
             dest[destIndex++] = source[i];
         }
     }
-    return destIndex; // Retorna o novo tamanho (Raw Data + BCC2)
+    return destIndex;
 }
 
 
-// ----------------------------------------------------
-// Função Auxiliar: Cálculo do BCC2 (Adicionada)
-// ----------------------------------------------------
-/**
- * Calcula o BCC2 (XOR de todos os bytes) para o payload.
- * @param buf Buffer de dados (payload)
- * @param bufSize Tamanho do payload
- * @return O valor do BCC2
- */
+
 static unsigned char calculateBCC2(const unsigned char *buf, int bufSize) {
     unsigned char bcc2 = 0x00;
     for (int i = 0; i < bufSize; i++) {
@@ -403,28 +384,17 @@ static unsigned char calculateBCC2(const unsigned char *buf, int bufSize) {
     return bcc2;
 }
 
-// ----------------------------------------------------
-// Função Auxiliar: Receber ACK (RR/REJ) (Adicionada)
-// ----------------------------------------------------
-/**
- * Espera e verifica se o ACK (RR) esperado para Ns foi recebido.
- * @param Ns_sent Número de sequência do pacote I enviado (0 ou 1)
- * @return 1 se RR(1-Ns) for recebido (ACK OK), 0 se REJ for recebido (ACK NACK), -1 se a frame for inválida/inesperada, -2 se ocorrer timeout.
- */
+
+
 static int receiveAckFrame(int Ns_sent)
 {
-    // O ACK esperado é para o próximo pacote (Nr = 1-Ns_sent)
     unsigned char C_expected_RR = (Ns_sent == 0) ? C_RR_1 : C_RR_0;
     unsigned char C_expected_REJ = (Ns_sent == 0) ? C_REJ_1 : C_REJ_0;
 
     unsigned char rx_frame[5]; // F A C BCC1 F
 
-    // Usa a máquina de estados genérica, mas verifica se o campo C é um RR ou REJ
     while(alarmEnabled)
     {
-        // receiveControlFrame vai retornar 1 se receber F A C_esperado BCC1 F
-        // O problema é que receiveControlFrame só espera UM C_expected.
-        // Vamos adaptar a lógica de receiveControlFrame para esta função.
 
         enum State state = START_S;
         unsigned char byte;

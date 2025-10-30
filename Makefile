@@ -9,8 +9,8 @@ BIN = bin/
 CABLE = cable/
 SRC = src/
 
-TX_SERIAL_PORT = /dev/pts/5
-RX_SERIAL_PORT = /dev/pts/7
+TX_SERIAL_PORT = /dev/ttyS10
+RX_SERIAL_PORT = /dev/ttyS11
 BAUD_RATE = 9600
 
 TX_FILE = penguin.gif
@@ -41,9 +41,9 @@ cable: $(CABLE)/cable.c
 
 .PHONY: run_cable
 run_cable: cable
-	@which -s socat || { echo "Error: Could not find socat. Install socat and try again."; exit 1; }
-	sudo ./$(BIN)/cable
-
+	@command -v socat > /dev/null 2>&1 || \
+	{ echo "Error: Could not find socat. Install socat and try again."; exit 1; }
+	sudo ./$(CABLE)/cable
 # Clean
 .PHONY: clean
 clean:
