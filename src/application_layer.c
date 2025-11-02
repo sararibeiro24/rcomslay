@@ -28,10 +28,7 @@ int buildDataPacket(unsigned char *packet, const unsigned char *data, int dataSi
 int buildEndPacket(unsigned char *packet, long fileSize, const char *filename);
 int buildStartPacket(unsigned char *packet, long fileSize, const char *filename);
 
-/**
- * Constrói um pacote de dados (C=0x01) para a camada de aplicação.
- * Formato: C | N | L2 | L1 | Data...
- */
+
 int buildDataPacket(unsigned char *packet, const unsigned char *data, int dataSize) {
     int i = 0;
 
@@ -262,6 +259,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         printf("RX AL: Nome do ficheiro de saída (forçado): %s\n", finalOutputFilename);
         
         FILE *outFile = fopen(finalOutputFilename, "wb");
+        
         if (outFile == NULL) {
             perror("RX AL: Erro ao abrir ficheiro de saída");
             free(packet);
