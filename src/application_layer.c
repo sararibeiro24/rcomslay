@@ -108,8 +108,7 @@ int buildStartPacket(unsigned char *packet, long fileSize, const char *filename)
  * Implementação da camada de aplicação (transmissor ou recetor).
  */
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
-                      int nTries, int timeout, const char *filename)
-{
+                      int nTries, int timeout, const char *filename){
     int fd;
     
     LinkLayer connectionParameters = {
@@ -152,7 +151,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         int startPacketSize = buildStartPacket(startPacket, fileSize, filename);
         
         printf("TX AL: Enviando Start Packet (%d bytes)...\n", startPacketSize);
+        
         if (llwrite(startPacket, startPacketSize) < 0) {
+           
             printf("TX AL: Falha ao enviar Start Packet.\n");
             fclose(file);
             llclose();
@@ -175,6 +176,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 llclose();
                 exit(-1);
             }
+            
             bytesSent += bytesRead;
             printf("TX AL: Enviado Data Packet (N=%d, Bytes=%d). Total: %ld/%ld\r", 
                    (N_DATA == 0 ? 255 : N_DATA - 1), bytesRead, bytesSent, fileSize);
@@ -239,7 +241,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 tempFilename[L] = '\0';
                 currentPos += L;
                 printf("RX AL: Nome do ficheiro recebido no pacote: %s\n", tempFilename);
-            } else {
+            } 
+            else {
                 printf("RX AL: AVISO - TLV desconhecido ou inválido (T=%x, L=%d). Ignorando.\n", T, L);
                 currentPos += L;
             }
@@ -329,8 +332,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         free(packet);
         
         if (finished && bytesReceived == expectedFileSize) {
+            
             printf("\nRX AL: Sucesso! Ficheiro de saída ('%s') guardado com %ld bytes.\n", receivedFilename, bytesReceived);
-        } else {
+        } 
+        else {
              printf("\nRX AL: FALHA! Recebido %ld bytes, mas esperado %ld. (Fim: %s).", 
                    bytesReceived, expectedFileSize, finished ? "Sim" : "Não");
              printf(" O ficheiro foi tentado guardar como: '%s'\n", receivedFilename);

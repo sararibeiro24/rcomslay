@@ -50,8 +50,8 @@ static LinkLayer currentLinkLayer;
 // ----------------------------------------------------
 // Alarm Handler
 // ----------------------------------------------------
-void alarmHandler(int signal)
-{
+ alarmHandler(int signal){ 
+
     // A chamada a alarm(0) é feita fora daqui para desativar o timer.
     alarmEnabled = FALSE;
     alarmCount++;
@@ -60,8 +60,8 @@ void alarmHandler(int signal)
 // ----------------------------------------------------
 // Função Auxiliar: Enviar Frame de Controlo (SET, UA, DISC, etc.)
 // ----------------------------------------------------
-int sendControlFrame(unsigned char A, unsigned char C)
-{
+int sendControlFrame(unsigned char A, unsigned char C){
+
     unsigned char frame[5];
     frame[0] = FLAG;
     frame[1] = A;
@@ -70,8 +70,8 @@ int sendControlFrame(unsigned char A, unsigned char C)
     frame[4] = FLAG;
 
     int bytes_written = writeBytesSerialPort(frame, 5);
-    if (bytes_written != 5)
-    {
+    if (bytes_written != 5){
+
         printf("Erro ao escrever frame de controlo (A=0x%02X, C=0x%02X)\n", A, C);
         return -1;
     }
@@ -84,8 +84,8 @@ int sendControlFrame(unsigned char A, unsigned char C)
 /**
  * Envia uma trama de Supervisão (RR ou REJ).
  */
-static int sendSupervisionFrame(unsigned char C)
-{
+static int sendSupervisionFrame(unsigned char C){
+
     // O Recetor envia respostas, então A = A_RCV (0x01)
     return sendControlFrame(A_RCV, C);
 }
@@ -105,18 +105,18 @@ enum State {
 
 
 // Retorna 1 se a frame esperada for recebida, 0 caso contrário.
-int receiveControlFrame(unsigned char *frame, unsigned char A_expected, unsigned char C_expected)
-{
+int receiveControlFrame(unsigned char *frame, unsigned char A_expected, unsigned char C_expected) {
+
     enum State state = START_S;
     unsigned char byte;
     int res;
     int i = 0;
 
-    while (state != STOP_S)
-    {
+    while (state != STOP_S) {
+
         res = readByteSerialPort(&byte);
-        if (res == -1)
-        {
+        if (res == -1){
+
             perror("readByteSerialPort error");
             return 0;
         }
@@ -128,48 +128,48 @@ int receiveControlFrame(unsigned char *frame, unsigned char A_expected, unsigned
         }
 
 
-        if (res == 1)
-        {
-            switch (state)
-            {
+        if (res == 1) {
+
+            switch (state){
+
             case START_S:
-                if (byte == FLAG)
-                {
+                if (byte == FLAG){ 
+
                     frame[i++] = byte;
                     state = FLAG_RCV_S;
                 }
                 break;
 
             case FLAG_RCV_S:
-                if (byte == A_expected)
-                {
+                if (byte == A_expected) {
+                    
                     frame[i++] = byte;
                     state = A_RCV_S;
+                
                 }
-                else if (byte == FLAG)
-                {
+                else if (byte == FLAG){ 
+
                     i = 1; // mantém apenas uma FLAG
                 }
-                else
-                {
+                else {
                     state = START_S;
                     i = 0;
                 }
                 break;
 
             case A_RCV_S:
-                if (byte == C_expected)
-                {
+                if (byte == C_expected){
+
                     frame[i++] = byte;
                     state = C_RCV_S;
                 }
-                else if (byte == FLAG)
-                {
+                else if (byte == FLAG){
+
                     state = FLAG_RCV_S;
                     i = 1;
                 }
-                else
-                {
+                else{
+
                     state = START_S;
                     i = 0;
                 }
@@ -178,18 +178,18 @@ int receiveControlFrame(unsigned char *frame, unsigned char A_expected, unsigned
             case C_RCV_S:
             {
                 unsigned char bcc1_calculated = frame[1] ^ frame[2];
-                if (byte == bcc1_calculated)
-                {
+                if (byte == bcc1_calculated) {
+                
                     frame[i++] = byte;
                     state = BCC1_RCV_S;
+                
                 }
-                else if (byte == FLAG)
-                {
+                else if (byte == FLAG){ 
+
                     state = FLAG_RCV_S;
                     i = 1;
                 }
-                else
-                {
+                else {
                     // BCC1 incorreto, reinicia
                     printf("Rx: BCC1 incorreto (esperado: 0x%02X, recebido: 0x%02X). Reiniciando.\n", bcc1_calculated, byte);
                     state = START_S;
@@ -199,20 +199,19 @@ int receiveControlFrame(unsigned char *frame, unsigned char A_expected, unsigned
             }
 
             case BCC1_RCV_S:
-                if (byte == FLAG)
-                {
+                if (byte == FLAG) {
+
                     frame[i++] = byte;
                     state = STOP_S;
                 }
-                else
-                {
-                    // Não é o FLAG de fecho, erro.
+                else {
+                    // Não é a FLAG de fecho, erro.
                     state = START_S;
                     i = 0;
                 }
                 break;
 
-            case DATA_RCV_S: // Não usado aqui, apenas para I-Frames
+            case DATA_RCV_S: //apenas para I-Frames
             case STOP_S:
                 break;
             }
@@ -228,18 +227,24 @@ int receiveControlFrame(unsigned char *frame, unsigned char A_expected, unsigned
 int llopen_transmitter(LinkLayer parameters)
 {
     int fd = openSerialPort(parameters.serialPort, parameters.baudRate);
-    if (fd < 0)
+    if (fd < 0){
         return -1;
-
+    }
     // Armazena os parâmetros globalmente
     currentLinkLayer = parameters;
 
-    (void)signal(SIGALRM, alarmHandler);
+    struct sigaction sa;
+    sa.sa_handler = alarmHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0; // O SEGREDO para interromper a chamada 'read'
+    if (sigaction(SIGALRM, &sa, NULL) == -1) {
+        perror("Error setting up sigaction for SIGALRM");
+        return -1;
+}
     unsigned char rx_frame[5];
     int success = 0;
 
-    for (alarmCount = 0; alarmCount < parameters.nRetransmissions && !success;)
-    {
+    for (alarmCount = 0; alarmCount < parameters.nRetransmissions && !success;) {
         printf("TX: Tentativa %d/%d - Enviando SET...\n", alarmCount + 1, parameters.nRetransmissions);
 
         sendControlFrame(A_TRX, C_SET);
@@ -247,22 +252,23 @@ int llopen_transmitter(LinkLayer parameters)
         alarmEnabled = TRUE;
         alarm(parameters.timeout); 
 
-        while (alarmEnabled && !success)
-        {
-            if (receiveControlFrame(rx_frame, A_RCV, C_UA))
-            {
+        while (alarmEnabled && !success) {
+
+            if (receiveControlFrame(rx_frame, A_RCV, C_UA)) {
+
                 printf("TX: UA recebido. Ligação estabelecida.\n");
                 success = 1;
                 alarm(0); // Desativa o temporizador
             }
         }
 
-        if (!success)
+        if (!success){
             printf("TX: Timeout. Retransmitindo...\n");
+        }
     }
 
-    if (!success)
-    {
+    if (!success){
+
         printf("TX: Falha após %d tentativas.\n", parameters.nRetransmissions);
         closeSerialPort();
         return -1;
@@ -274,8 +280,8 @@ int llopen_transmitter(LinkLayer parameters)
 // ----------------------------------------------------
 // Recetor: Espera SET, Envia UA
 // ----------------------------------------------------
-int llopen_receiver(LinkLayer parameters)
-{
+int llopen_receiver(LinkLayer parameters){
+
     int fd = openSerialPort(parameters.serialPort, parameters.baudRate);
     if (fd < 0)
         return -1;
@@ -289,8 +295,7 @@ int llopen_receiver(LinkLayer parameters)
     unsigned char rx_frame[5];
     printf("RX: À espera da Frame SET...\n");
 
-    while (1) 
-    {
+    while (1){
         if (receiveControlFrame(rx_frame, A_TRX, C_SET))
         {
             printf("RX: Frame SET recebida.\n");
@@ -299,8 +304,8 @@ int llopen_receiver(LinkLayer parameters)
         // Se a receção falhar, simplesmente continua a esperar.
     }
 
-    if (sendControlFrame(A_RCV, C_UA) < 0)
-    {
+    if (sendControlFrame(A_RCV, C_UA) < 0){
+
         printf("RX: Erro ao enviar UA.\n");
         closeSerialPort();
         return -1;
@@ -310,11 +315,8 @@ int llopen_receiver(LinkLayer parameters)
     return fd;
 }
 
-// ----------------------------------------------------
-// Função Principal (llopen)
-// ----------------------------------------------------
-int llopen(LinkLayer parameters)
-{
+int llopen(LinkLayer parameters){
+
     if (parameters.role == LlTx)
         return llopen_transmitter(parameters);
     else
@@ -322,26 +324,23 @@ int llopen(LinkLayer parameters)
 }
 
 
-// ----------------------------------------------------
-// Função Auxiliar: Byte Stuffing (Adicionada)
-// ----------------------------------------------------
-/**
- * Aplica o byte stuffing na 'source' e coloca o resultado em 'dest'.
- * @param source Dados de entrada (payload + BCC2)
- * @param sourceSize Tamanho dos dados de entrada
- * @param dest Buffer de destino (deve ter capacidade para o pior caso: sourceSize * 2)
- * @return Novo tamanho dos dados em 'dest'
- */
+
 static int byteStuffing(const unsigned char *source, int sourceSize, unsigned char *dest) {
     int destIndex = 0;
     for (int i = 0; i < sourceSize; i++) {
         if (source[i] == FLAG) {
+
             dest[destIndex++] = ESCAPE; // 0x7D
             dest[destIndex++] = 0x5E;   // 0x7E ^ 0x20
-        } else if (source[i] == ESCAPE) {
+
+        }
+        else if (source[i] == ESCAPE) {
+        
             dest[destIndex++] = ESCAPE; // 0x7D
             dest[destIndex++] = 0x5D;   // 0x7D ^ 0x20
-        } else {
+        }
+        else {
+        
             dest[destIndex++] = source[i];
         }
     }
@@ -356,18 +355,27 @@ static int byteDestuffing(const unsigned char *source, int sourceSize, unsigned 
             i++; 
             if (i < sourceSize) {
                 if (source[i] == 0x5E) {
+                    
                     dest[destIndex++] = FLAG; // 0x7E
-                } else if (source[i] == 0x5D) {
+                } 
+                else if (source[i] == 0x5D) {
+                
                     dest[destIndex++] = ESCAPE; // 0x7D
-                } else {
+                }
+                else {
+                
                     printf("RX Destuffing: Sequência de escape inválida (0x7D seguido por 0x%02X).\n", source[i]);
                     return -1; 
                 }
-            } else {
+            } 
+            else {
+               
                 printf("RX Destuffing: ESCAPE no final da sequência de dados.\n");
                 return -1; 
             }
-        } else {
+        } 
+        else {
+           
             dest[destIndex++] = source[i];
         }
     }
@@ -379,6 +387,7 @@ static int byteDestuffing(const unsigned char *source, int sourceSize, unsigned 
 static unsigned char calculateBCC2(const unsigned char *buf, int bufSize) {
     unsigned char bcc2 = 0x00;
     for (int i = 0; i < bufSize; i++) {
+        
         bcc2 ^= buf[i];
     }
     return bcc2;
@@ -386,15 +395,14 @@ static unsigned char calculateBCC2(const unsigned char *buf, int bufSize) {
 
 
 
-static int receiveAckFrame(int Ns_sent)
-{
+static int receiveAckFrame(int Ns_sent){
+
     unsigned char C_expected_RR = (Ns_sent == 0) ? C_RR_1 : C_RR_0;
     unsigned char C_expected_REJ = (Ns_sent == 0) ? C_REJ_1 : C_REJ_0;
 
     unsigned char rx_frame[5]; // F A C BCC1 F
 
-    while(alarmEnabled)
-    {
+    while(alarmEnabled){
 
         enum State state = START_S;
         unsigned char byte;
@@ -402,50 +410,92 @@ static int receiveAckFrame(int Ns_sent)
         int i = 0;
         unsigned char A_expected = A_RCV;
 
-        while (state != STOP_S)
-        {
+        while (state != STOP_S){
+       
             res = readByteSerialPort(&byte);
             
-            if (!alarmEnabled && res == 0) return -2; // Timeout detectado
-            if (res == -1) return -1; // Erro de leitura
+            if (!alarmEnabled && res == 0)
+                return -2; // Timeout detectado
+            if (res == -1)
+                return -1; // Erro de leitura
 
-            if (res == 1)
-            {
-                switch (state)
-                {
-                case START_S:
-                    if (byte == FLAG) { state = FLAG_RCV_S; i = 1; rx_frame[0] = byte; }
+            if (res == 1) {
+
+                switch (state){
+                
+                    case START_S:
+                
+                        if (byte == FLAG) {
+                            state = FLAG_RCV_S;
+                            i = 1;
+                            rx_frame[0] = byte; 
+                        }
                     break;
-                case FLAG_RCV_S:
-                    if (byte == A_expected) { state = A_RCV_S; i = 2; rx_frame[1] = byte; }
-                    else if (byte == FLAG) { i = 1; }
-                    else { state = START_S; i = 0; }
+                    
+                    case FLAG_RCV_S:
+                        if (byte == A_expected) { 
+                            state = A_RCV_S;
+                            i = 2; 
+                            rx_frame[1] = byte; 
+                        }
+                        else if (byte == FLAG) { 
+                            i = 1;
+                        }
+                        else { 
+                            state = START_S; i = 0; 
+                        }
                     break;
-                case A_RCV_S:
+                    case A_RCV_S:
                     // Verifica se C é RR ou REJ (que é o que esperamos)
-                    if (byte == C_expected_RR) { state = C_RCV_S; i = 3; rx_frame[2] = byte; }
-                    else if (byte == C_expected_REJ) { state = C_RCV_S; i = 3; rx_frame[2] = byte; }
-                    else if (byte == FLAG) { state = FLAG_RCV_S; i = 1; }
-                    else { state = START_S; i = 0; }
+                        if (byte == C_expected_RR) { 
+                            state = C_RCV_S;
+                            i = 3;
+                            rx_frame[2] = byte;
+                        }
+                        else if (byte == C_expected_REJ) { 
+                            state = C_RCV_S;
+                            i = 3; 
+                            rx_frame[2] = byte; 
+                        }
+                        else if (byte == FLAG) { 
+                            state = FLAG_RCV_S; 
+                            i = 1;
+                        }
+                        else { 
+                            state = START_S;
+                            i = 0; 
+                        }
                     break;
-                case C_RCV_S:
-                {
-                    unsigned char bcc1_calculated = rx_frame[1] ^ rx_frame[2];
-                    if (byte == bcc1_calculated) {
-                        state = BCC1_RCV_S; i = 4; rx_frame[3] = byte;
-                    } else if (byte == FLAG) {
-                        state = FLAG_RCV_S; i = 1;
-                    } else {
-                        state = START_S; i = 0; // BCC1 errado, ignora
+                    case C_RCV_S:
+                    {
+                        unsigned char bcc1_calculated = rx_frame[1] ^ rx_frame[2];
+                        if (byte == bcc1_calculated) {
+                            state = BCC1_RCV_S; 
+                            i = 4;
+                            rx_frame[3] = byte;
+                        } 
+                        else if (byte == FLAG) {
+                            state = FLAG_RCV_S;
+                            i = 1;
+                        } 
+                        else {
+                            state = START_S;
+                            i = 0; // BCC1 errado, ignora
+                        }
+                    break;
                     }
+                    case BCC1_RCV_S:
+                        if (byte == FLAG) {
+                            state = STOP_S;
+                            rx_frame[4] = byte;
+                        }
+                        else { 
+                            state = START_S;
+                            i = 0;
+                            }
                     break;
-                }
-                case BCC1_RCV_S:
-                    if (byte == FLAG) { state = STOP_S; rx_frame[4] = byte; }
-                    else { state = START_S; i = 0; }
-                    break;
-                case DATA_RCV_S: 
-                case STOP_S:
+                    case DATA_RCV_S: 
+                    case STOP_S:
                     break;
                 }
             }
@@ -469,8 +519,7 @@ static int receiveAckFrame(int Ns_sent)
 // ----------------------------------------------------
 // LLWRITE
 // ----------------------------------------------------
-int llwrite(const unsigned char *buf, int bufSize)
-{
+int llwrite(const unsigned char *buf, int bufSize){
     unsigned char C_I = (Ns == 0) ? C_I_0 : C_I_1;
     int data_size = bufSize;
     unsigned char bcc2;
@@ -503,8 +552,8 @@ int llwrite(const unsigned char *buf, int bufSize)
 
     int success = 0;
     
-    for (alarmCount = 0; alarmCount < currentLinkLayer.nRetransmissions && !success;)
-    {
+    for (alarmCount = 0; alarmCount < currentLinkLayer.nRetransmissions && !success;){
+
         printf("TX LLWRITE (Ns=%d): Tentativa %d/%d - Enviando trama I (tamanho dados: %d)...\n", 
                Ns, alarmCount + 1, currentLinkLayer.nRetransmissions, bufSize);
         
@@ -522,16 +571,23 @@ int llwrite(const unsigned char *buf, int bufSize)
         int ack_status = receiveAckFrame(Ns);
 
         if (ack_status == 1) { 
+            
             printf("TX LLWRITE (Ns=%d): RR recebido. ACK OK.\n", Ns);
             success = 1;
             alarm(0);
-        } else if (ack_status == 0) { 
+        }
+        else if (ack_status == 0) { 
+        
             printf("TX LLWRITE (Ns=%d): REJ recebido. Retransmitindo...\n", Ns);
             alarmCount++; 
             alarm(0);
-        } else if (ack_status == -2) { // Timeout
+        }
+        else if (ack_status == -2) { // Timeout
+        
             printf("TX LLWRITE (Ns=%d): Timeout. Retransmitindo...\n", Ns);
-        } else {
+        }
+         else {
+        
             printf("TX LLWRITE (Ns=%d): Frame de ACK inválida. Retransmitindo...\n", Ns);
             alarm(0);
             alarmCount++;
@@ -545,8 +601,8 @@ int llwrite(const unsigned char *buf, int bufSize)
         Ns = 1 - Ns;
         return bufSize; 
     }
-    else
-    {
+    else{
+        
         printf("TX LLWRITE: Falha na transmissão após %d tentativas (Ns=%d).\n", currentLinkLayer.nRetransmissions, Ns);
         return -1;
     }
@@ -555,8 +611,8 @@ int llwrite(const unsigned char *buf, int bufSize)
 // ----------------------------------------------------
 // LLREAD
 // ----------------------------------------------------
-int llread(unsigned char *packet)
-{
+int llread(unsigned char *packet){
+    
     unsigned char C_expected = (Nr_expected == 0) ? C_I_0 : C_I_1;
     unsigned char C_other = (Nr_expected == 0) ? C_I_1 : C_I_0;
     
@@ -574,16 +630,16 @@ int llread(unsigned char *packet)
     
     printf("RX LLREAD: À espera da Frame I (Ns=%d)...\n", Nr_expected);
 
-    while (state != STOP_S)
-    {
+    while (state != STOP_S){
+    
         res = readByteSerialPort(&byte);
         if (res == -1) {
             perror("llread: Erro de leitura da porta serial");
             return -1;
         }
 
-        if (res == 1)
-        {
+        if (res == 1){
+    
             if (raw_frame_index >= MAX_RAW_FRAME_SIZE) {
                 printf("RX LLREAD: Buffer da frame excedido. Reiniciando...\n");
                 state = START_S;
@@ -591,8 +647,7 @@ int llread(unsigned char *packet)
                 continue;
             }
 
-            switch (state)
-            {
+            switch (state){
             case START_S:
                 raw_frame_index = 0;
                 if (byte == FLAG) {
@@ -605,9 +660,11 @@ int llread(unsigned char *packet)
                 if (byte == A_TRX) {
                     raw_frame[raw_frame_index++] = byte;
                     state = A_RCV_S;
-                } else if (byte == FLAG) {
+                }
+                else if (byte == FLAG) {
                     raw_frame_index = 1;
-                } else {
+                }
+                else {
                     state = START_S; 
                 }
                 break;
@@ -616,27 +673,33 @@ int llread(unsigned char *packet)
                 if (byte == C_expected || byte == C_other) {
                     raw_frame[raw_frame_index++] = byte;
                     state = C_RCV_S;
-                } else if (byte == FLAG) {
+                } 
+                else if (byte == FLAG) {
                     state = FLAG_RCV_S;
                     raw_frame_index = 1;
-                } else {
+                }
+                else {
                     state = START_S;
                 }
                 break;
 
-            case C_RCV_S:
-            {
+            case C_RCV_S:{
                 unsigned char bcc1_calculated = raw_frame[1] ^ raw_frame[2];
                 if (byte == bcc1_calculated) {
+                    
                     raw_frame[raw_frame_index++] = byte;
                     data_index = raw_frame_index; 
                     state = DATA_RCV_S;
                     printf("RX LLREAD: Cabeçalho I(Ns=%d) OK. A recolher dados...\n", (raw_frame[2] == C_I_0) ? 0 : 1);
-                } else if (byte == FLAG) {
+                } 
+                else if (byte == FLAG) {
+                    
                     printf("RX LLREAD: BCC1 incorreto. Ignorando frame.\n");
                     state = FLAG_RCV_S;
                     raw_frame_index = 1;
-                } else {
+                } 
+                else {
+                    
                     printf("RX LLREAD: BCC1 incorreto. Reiniciando (Dado: 0x%02X, Calc: 0x%02X).\n", byte, bcc1_calculated);
                     state = START_S;
                 }
@@ -646,7 +709,8 @@ int llread(unsigned char *packet)
             case DATA_RCV_S:
                 if (byte == FLAG) {
                     state = STOP_S;
-                } else {
+                }
+                else {
                     raw_frame[raw_frame_index++] = byte;
                 }
                 break;
@@ -707,19 +771,24 @@ int llread(unsigned char *packet)
 // ----------------------------------------------------
 // LLCLOSE
 // ----------------------------------------------------
-int llclose()
-{
+int llclose() {
     printf("\n--- Fechando ligação (llclose) ---\n");
 
     int success = 0;
     unsigned char rx_frame[5];
 
-    if (currentLinkLayer.role == LlTx) 
-    {
-        (void)signal(SIGALRM, alarmHandler); 
+    if (currentLinkLayer.role == LlTx) {
+       struct sigaction sa;
+        sa.sa_handler = alarmHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0; // O SEGREDO para interromper a chamada 'read'
+    if (sigaction(SIGALRM, &sa, NULL) == -1) {
+        perror("Error setting up sigaction for SIGALRM");
+        return -1;
+} 
 
-        for (alarmCount = 0; alarmCount < currentLinkLayer.nRetransmissions && !success;)
-        {
+        for (alarmCount = 0; alarmCount < currentLinkLayer.nRetransmissions && !success;){
+
             printf("TX LLCLOSE: Tentativa %d/%d - Enviando DISC (comando)...\n", alarmCount + 1, currentLinkLayer.nRetransmissions);
 
             sendControlFrame(A_TRX, C_DISC);
@@ -727,10 +796,10 @@ int llclose()
             alarmEnabled = TRUE;
             alarm(currentLinkLayer.timeout); 
 
-            while (alarmEnabled && !success)
-            {
-                if (receiveControlFrame(rx_frame, A_RCV, C_DISC))
-                {
+            while (alarmEnabled && !success){ 
+
+                if (receiveControlFrame(rx_frame, A_RCV, C_DISC)){
+ 
                     printf("TX LLCLOSE: DISC (resposta) recebido. Enviando UA...\n");
                     
                     sendControlFrame(A_TRX, C_UA);
@@ -744,58 +813,61 @@ int llclose()
                 printf("TX LLCLOSE: Timeout. Retransmitindo DISC...\n");
         }
 
-        if (!success)
-        {
+        if (!success) {
             printf("TX LLCLOSE: Falha no handshake de fecho após %d tentativas.\n", currentLinkLayer.nRetransmissions);
         }
         else {
             printf("TX LLCLOSE: Handshake de fecho concluído com sucesso.\n");
         }
     }
-    else // LlRx
-    {
+    else { // LlRx
+    
         printf("RX LLCLOSE: À espera da Frame DISC (comando)...\n");
 
-        if (!receiveControlFrame(rx_frame, A_TRX, C_DISC)) 
-        {
+        if (!receiveControlFrame(rx_frame, A_TRX, C_DISC)) {
+
             printf("RX LLCLOSE: Falha ao receber DISC.\n");
         }
-        else
-        {
+        else{
             printf("RX LLCLOSE: DISC (comando) recebido. Enviando DISC (resposta)...\n");
 
             sendControlFrame(A_RCV, C_DISC);
             
-            (void)signal(SIGALRM, alarmHandler); 
+     struct sigaction sa;
+        sa.sa_handler = alarmHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0; 
+    if (sigaction(SIGALRM, &sa, NULL) == -1) {
+        perror("Error setting up sigaction for SIGALRM");
+        return -1;
+}
             alarmCount = 0;
             success = 0;
 
-            for (alarmCount = 0; alarmCount < currentLinkLayer.nRetransmissions && !success;)
-            {
+            for (alarmCount = 0; alarmCount < currentLinkLayer.nRetransmissions && !success;){
                 printf("RX LLCLOSE: Tentativa %d/%d - À espera da Frame UA...\n", alarmCount + 1, currentLinkLayer.nRetransmissions);
                 
                 alarmEnabled = TRUE;
                 alarm(currentLinkLayer.timeout);
                 
-                while (alarmEnabled && !success)
-                {
-                    if (receiveControlFrame(rx_frame, A_TRX, C_UA))
-                    {
+                while (alarmEnabled && !success){
+
+                    if (receiveControlFrame(rx_frame, A_TRX, C_UA)){
+
                         printf("RX LLCLOSE: UA recebido. Handshake de fecho concluído.\n");
                         success = 1;
                         alarm(0);
                     }
                 }
                 
-                if (!success)
-                {
+                if (!success){
+
                     printf("RX LLCLOSE: Timeout. Retransmitindo DISC...\n");
                     sendControlFrame(A_RCV, C_DISC);
                 }
             }
 
-            if (!success)
-            {
+            if (!success){
                 printf("RX LLCLOSE: Falha no handshake de fecho após %d tentativas.\n", currentLinkLayer.nRetransmissions);
             }
             else {
@@ -804,14 +876,13 @@ int llclose()
         }
     }
     
-    if (closeSerialPort() == 0)
-    {
+    if (closeSerialPort() == 0){
         printf("Porta série fechada com sucesso.\n");
       
         return success ? 0 : -2; 
     }
-    else
-    {
+    else{
+
         printf("Erro ao fechar porta série.\n");
         return -1;
     }
