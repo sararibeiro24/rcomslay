@@ -673,7 +673,10 @@ int llread(unsigned char *packet){
                 if (byte == C_expected || byte == C_other) {
                     raw_frame[raw_frame_index++] = byte;
                     state = C_RCV_S;
-                } 
+                }
+                else if (byte == C_DISC) {
+                        sendSupervisionFrame(C_DISC);
+                        return 0; }
                 else if (byte == FLAG) {
                     state = FLAG_RCV_S;
                     raw_frame_index = 1;
