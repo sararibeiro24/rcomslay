@@ -213,7 +213,7 @@ int llopen_transmitter(LinkLayer parameters){
     int success = 0;
 
     for (alarmCount = 0; alarmCount < parameters.nRetransmissions && !success;){
-        printf("TX: Tentativa %d/%d - Enviando SET...\n", alarmCount + 1, parameters.nRetransmissions);
+        printf("TX: Tentativa %d/%d - Enviando SET...\n", alarmCount, parameters.nRetransmissions);
 
         sendControlFrame(A_TRX, C_SET);
         alarmEnabled = TRUE;
@@ -423,7 +423,7 @@ int llwrite(const unsigned char *buf, int bufSize){
 
     for (alarmCount=0; alarmCount<currentLinkLayer.nRetransmissions && !success;){
         printf("TX LLWRITE (Ns=%d): Tentativa %d/%d - Enviando trama I (tamanho dados: %d)...\n", 
-               Ns, alarmCount+1, currentLinkLayer.nRetransmissions, bufSize);
+               Ns, alarmCount, currentLinkLayer.nRetransmissions, bufSize);
 
         bytes_sent = writeBytesSerialPort(full_frame, full_frame_size);
         if (bytes_sent != full_frame_size){
@@ -578,7 +578,7 @@ int llclose(){
         if (sigaction(SIGALRM, &sa, NULL)==-1){ perror("sigaction"); return -1;}
 
         for (alarmCount=0; alarmCount<currentLinkLayer.nRetransmissions && !success;){
-            printf("TX LLCLOSE: Tentativa %d/%d - Enviando DISC...\n", alarmCount+1, currentLinkLayer.nRetransmissions);
+            printf("TX LLCLOSE: Tentativa %d/%d - Enviando DISC...\n", alarmCount, currentLinkLayer.nRetransmissions);
 
             sendControlFrame(A_TRX,C_DISC);
             alarmEnabled=TRUE; alarm(currentLinkLayer.timeout);
@@ -612,7 +612,7 @@ int llclose(){
             alarmCount=0; success=0;
 
             for (alarmCount=0; alarmCount<currentLinkLayer.nRetransmissions && !success;){
-                printf("RX LLCLOSE: Tentativa %d/%d - À espera de UA...\n", alarmCount+1, currentLinkLayer.nRetransmissions);
+                printf("RX LLCLOSE: Tentativa %d/%d - À espera de UA...\n", alarmCount, currentLinkLayer.nRetransmissions);
 
                 alarmEnabled=TRUE; alarm(currentLinkLayer.timeout);
 
