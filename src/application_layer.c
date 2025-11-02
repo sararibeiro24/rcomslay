@@ -34,13 +34,12 @@ int buildDataPacket(unsigned char *packet, const unsigned char *data, int dataSi
 
     packet[i++] = CTRL_DATA;
 
-    // Usamos N_DATA e depois incrementamos.
     packet[i++] = N_DATA; 
     N_DATA = (N_DATA + 1) % 256;
 
     unsigned short length = (unsigned short)dataSize;
-    packet[i++] = (unsigned char)((length >> 8) & 0xFF); // L2 (Most Significant Byte)
-    packet[i++] = (unsigned char)(length & 0xFF);        // L1 (Least Significant Byte)
+    packet[i++] = (unsigned char)((length >> 8) & 0xFF); // L2 (MSB)
+    packet[i++] = (unsigned char)(length & 0xFF);        // L1 (LSB)
 
     memcpy(&packet[i], data, dataSize);
     i += dataSize;
@@ -48,24 +47,19 @@ int buildDataPacket(unsigned char *packet, const unsigned char *data, int dataSi
     return i; // Total size of the data packet
 }
 
-/**
- * Constrói um pacote de fim (C=0x03) para a camada de aplicação.
- * Inclui os campos TLV (File Size e File Name).
- */
+
 int buildEndPacket(unsigned char *packet, long fileSize, const char *filename) {
     int i = 0;
 
     // Control field
     packet[i++] = CTRL_END;
 
-    // --- File size TLV (T=0x00, L=sizeof(long), V=fileSize) ---
     packet[i++] = T_FILE_SIZE;       
     packet[i++] = sizeof(long);      
     for (int u = sizeof(long) - 1; u >= 0; u--) { 
         packet[i++] = (fileSize >> (8 * u)) & 0xFF;
     }
 
-    // --- File name TLV (T=0x01, L=nameLen, V=filename) ---
     int nameLen = strlen(filename);
     packet[i++] = T_FILE_NAME;       
     packet[i++] = nameLen;           
@@ -75,10 +69,7 @@ int buildEndPacket(unsigned char *packet, long fileSize, const char *filename) {
     return i;
 }
 
-/**
- * Constrói um pacote de início (C=0x02) para a camada de aplicação.
- * Inclui os campos TLV (File Size e File Name).
- */
+
 int buildStartPacket(unsigned char *packet, long fileSize, const char *filename) {
     int i = 0;
 
@@ -91,7 +82,6 @@ int buildStartPacket(unsigned char *packet, long fileSize, const char *filename)
         packet[i++] = (fileSize >> (8 * u)) & 0xFF;
     }
 
-    // --- File name TLV (T=0x01, L=nameLen, V=filename) ---
     int nameLen = strlen(filename);
     packet[i++] = T_FILE_NAME;       
     packet[i++] = nameLen;           
@@ -101,9 +91,7 @@ int buildStartPacket(unsigned char *packet, long fileSize, const char *filename)
     return i;
 }
 
-/**
- * Implementação da camada de aplicação (transmissor ou recetor).
- */
+
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename){
     int fd;
@@ -226,7 +214,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             unsigned char L = packet[currentPos++];
             
             if (T == T_FILE_SIZE && L == sizeof(long)) {
-                // T=0x00 (File Size)
                 expectedFileSize = 0;
                 for (int u = 0; u < L; u++) {
                     expectedFileSize = (expectedFileSize << 8) | packet[currentPos++];

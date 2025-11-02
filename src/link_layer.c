@@ -12,51 +12,48 @@
 #include <time.h>
 
 // ----------------------------------------------------
-// Constants & Globals
+// Contantes e globais
 // ----------------------------------------------------
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
-// --- HDLC Fields ---
+// Fields
 #define FLAG 0x7E
 #define ESCAPE 0x7D
-#define A_TRX 0x03  // Endereço para comandos (Tx->Rx)
-#define A_RCV 0x01  // Endereço para respostas (Rx->Tx)
+#define A_TRX 0x03  // Transmitter 
+#define A_RCV 0x01  // Receiver
 #define C_SET 0x03  // Set Asynchronous Balanced Mode
 #define C_UA 0x07   // Unnumbered Acknowledge
 #define C_DISC 0x0B // Disconnect
 
-// --- I-Frame and Supervision Fields (Ns/Nr: 0 or 1) ---
+// I-Frame and Supervision Fields 
 #define C_I_0  0x00 // I Frame, Ns=0
 #define C_I_1  0x40 // I Frame, Ns=1
-#define C_RR_0 0x05 // RR Frame, Nr=0 (ACK I(1), espera I(0) a seguir)
-#define C_RR_1 0x85 // RR Frame, Nr=1 (ACK I(0), espera I(1) a seguir)
-#define C_REJ_0 0x01 // REJ Frame, Nr=0 (NACK I(1))
-#define C_REJ_1 0x81 // REJ Frame, Nr=1 (NACK I(0))
+#define C_RR_0 0x05 // RR Frame, Nr=0 
+#define C_RR_1 0x85 // RR Frame, Nr=1 
+#define C_REJ_0 0x01 // REJ Frame, Nr=0 
+#define C_REJ_1 0x81 // REJ Frame, Nr=1 
 
-// --- Max Sizes ---
+// Max Sizes 
 #ifndef MAX_PAYLOAD_SIZE
 #define MAX_PAYLOAD_SIZE 1024 
 #endif
-#define MAX_RAW_FRAME_SIZE (MAX_PAYLOAD_SIZE * 2 + 10)
+#define MAX_frame_SIZE (MAX_PAYLOAD_SIZE * 2 + 10)
 
-// --- Globals ---
+
 int alarmEnabled = FALSE;
 int alarmCount = 0;
-static int Ns = 0; // Send sequence number (0 or 1)
-static int Nr_expected = 0; // Expected sequence number for RX
+static int Ns = 0; 
+static int Nr_expected = 0; 
 static LinkLayer currentLinkLayer;
 
-// ----------------------------------------------------
+
 // Alarm Handler
-// ----------------------------------------------------
 alarmHandler(int signal){ 
     alarmEnabled = FALSE;
     alarmCount++;
 }
 
-// ----------------------------------------------------
 // Função Auxiliar: Enviar Frame de Controlo
-// ----------------------------------------------------
 int sendControlFrame(unsigned char A, unsigned char C){
     unsigned char frame[5];
     frame[0] = FLAG;
@@ -73,16 +70,13 @@ int sendControlFrame(unsigned char A, unsigned char C){
     return 0;
 }
 
-// ----------------------------------------------------
+
 // Função Auxiliar: Enviar Frame de Supervisão (RR/REJ)
-// ----------------------------------------------------
 static int sendSupervisionFrame(unsigned char C){
     return sendControlFrame(A_RCV, C);
 }
 
-// ----------------------------------------------------
-// Máquina de Estados para Receber Frames de Controlo
-// ----------------------------------------------------
+// Máquina de Estados
 enum State {
     START_S,
     FLAG_RCV_S,
@@ -93,9 +87,7 @@ enum State {
     STOP_S
 };
 
-// ----------------------------------------------------
 // Receção de Frames de Controlo
-// ----------------------------------------------------
 int receiveControlFrame(unsigned char *frame, unsigned char A_expected, unsigned char C_expected) {
     enum State state = START_S;
     unsigned char byte;
@@ -189,9 +181,7 @@ int receiveControlFrame(unsigned char *frame, unsigned char A_expected, unsigned
     return 1;
 }
 
-// ----------------------------------------------------
-// Transmissor: Envia SET e Espera UA
-// ----------------------------------------------------
+// Transmitter: Envia SET e Espera UA
 int llopen_transmitter(LinkLayer parameters){
     int fd = openSerialPort(parameters.serialPort, parameters.baudRate);
     if (fd < 0){
@@ -241,9 +231,7 @@ int llopen_transmitter(LinkLayer parameters){
     return fd;
 }
 
-// ----------------------------------------------------
-// Recetor: Espera SET, Envia UA
-// ----------------------------------------------------
+// Receiver: Espera SET, Envia UA
 int llopen_receiver(LinkLayer parameters){
     int fd = openSerialPort(parameters.serialPort, parameters.baudRate);
     if (fd < 0)
@@ -279,9 +267,7 @@ int llopen(LinkLayer parameters){
         return llopen_receiver(parameters);
 }
 
-// ----------------------------------------------------
 // Byte Stuffing / Destuffing
-// ----------------------------------------------------
 static int byteStuffing(const unsigned char *source, int sourceSize, unsigned char *dest){
     int destIndex = 0;
     for (int i = 0; i < sourceSize; i++){
@@ -324,9 +310,7 @@ static unsigned char calculateBCC2(const unsigned char *buf, int bufSize){
     return bcc2;
 }
 
-// ----------------------------------------------------
-// Receive ACK/REJ
-// ----------------------------------------------------
+// Receber ACK/REJ Frame
 static int receiveAckFrame(int Ns_sent){
     unsigned char C_expected_RR = (Ns_sent == 0) ? C_RR_1 : C_RR_0;
     unsigned char C_expected_REJ = (Ns_sent == 0) ? C_REJ_1 : C_REJ_0;
@@ -347,28 +331,57 @@ static int receiveAckFrame(int Ns_sent){
             if (res == 1){
                 switch(state){
                     case START_S:
-                        if (byte == FLAG){ state = FLAG_RCV_S; i = 1; rx_frame[0] = byte;}
+                        if (byte == FLAG){ 
+                            state = FLAG_RCV_S; 
+                            i = 1; 
+                            rx_frame[0] = byte;
+                        }
                         break;
                     case FLAG_RCV_S:
-                        if (byte == A_expected){ state = A_RCV_S; i = 2; rx_frame[1] = byte;}
-                        else if (byte == FLAG){ i = 1; }
-                        else { state = START_S; i = 0;}
+                        if (byte == A_expected){ 
+                            state = A_RCV_S;
+                            i = 2; 
+                            rx_frame[1] = byte;
+                        }
+                        else if (byte == FLAG){
+                            i = 1;
+                        }
+                        else { state = START_S; 
+                            i = 0;
+                        }
                         break;
                     case A_RCV_S:
-                        if (byte == C_expected_RR || byte == C_expected_REJ){ state = C_RCV_S; i = 3; rx_frame[2] = byte;}
-                        else if (byte == FLAG){ state = FLAG_RCV_S; i = 1; }
-                        else { state = START_S; i = 0; }
+                        if (byte == C_expected_RR || byte == C_expected_REJ){ 
+                            state = C_RCV_S; i = 3; rx_frame[2] = byte;
+                        }
+                        else if (byte == FLAG){ 
+                            state = FLAG_RCV_S; i = 1; 
+                        }
+                        else { 
+                            state = START_S; i = 0; 
+                        }
                         break;
                     case C_RCV_S:{
                         unsigned char bcc1_calculated = rx_frame[1] ^ rx_frame[2];
-                        if (byte == bcc1_calculated){ state = BCC1_RCV_S; i = 4; rx_frame[3] = byte; }
-                        else if (byte == FLAG){ state = FLAG_RCV_S; i = 1;}
-                        else { state = START_S; i = 0; }
+                        if (byte == bcc1_calculated){ 
+                            state = BCC1_RCV_S; i = 4; rx_frame[3] = byte; 
+                        }
+                        else if (byte == FLAG){ 
+                            state = FLAG_RCV_S; i = 1;
+                        }
+                        else { 
+                            state = START_S; i = 0; 
+                        }
                         break;
                     }
                     case BCC1_RCV_S:
-                        if (byte == FLAG){ state = STOP_S; rx_frame[4] = byte;}
-                        else { state = START_S; i = 0;}
+                        if (byte == FLAG){ 
+                            state = STOP_S; 
+                            rx_frame[4] = byte;
+                        }
+                        else { 
+                            state = START_S; i = 0;
+                        }
                         break;
                     case DATA_RCV_S:
                     case STOP_S:
@@ -476,9 +489,9 @@ int llread(unsigned char *packet){
         unsigned char C_RR_to_send = (Nr_expected==0)?C_RR_1:C_RR_0;
         unsigned char C_REJ_to_send = (Nr_expected==0)?C_REJ_0:C_REJ_1;
 
-        unsigned char raw_frame[MAX_RAW_FRAME_SIZE];
+        unsigned char frame[MAX_frame_SIZE];
         unsigned char unstuffed_data[MAX_PAYLOAD_SIZE+1];
-        int raw_frame_index=0;
+        int frameIDX=0;
         int data_index=0;
 
         enum State state=START_S;
@@ -491,41 +504,71 @@ int llread(unsigned char *packet){
             res = readByteSerialPort(&byte);
             if (res==-1){ perror("llread: Erro de leitura"); return -1;}
             if (res==1){
-                if (raw_frame_index >= MAX_RAW_FRAME_SIZE){
+                if (frameIDX >= MAX_frame_SIZE){
                     printf("RX LLREAD: Buffer excedido. Reiniciando...\n");
-                    state=START_S; raw_frame_index=0; continue;
+                    state=START_S; frameIDX=0; continue;
                 }
 
                 switch(state){
-                    case START_S: raw_frame_index=0;
-                        if (byte==FLAG){ raw_frame[raw_frame_index++]=byte; state=FLAG_RCV_S;}
+                    case START_S: frameIDX=0;
+                        if (byte==FLAG){
+                            frame[frameIDX++]=byte;
+                            state=FLAG_RCV_S;
+                        }
                         break;
                     case FLAG_RCV_S:
-                        if (byte==A_TRX){ raw_frame[raw_frame_index++]=byte; state=A_RCV_S;}
-                        else if (byte==FLAG){ raw_frame_index=1;}
+                        if (byte==A_TRX){ 
+                            frame[frameIDX++]=byte; 
+                            state=A_RCV_S;
+                        }
+                        else if (byte==FLAG){
+                            frameIDX=1;
+                        }
                         else state=START_S;
                         break;
                     case A_RCV_S:
-                        if (byte==C_expected || byte==C_other){ raw_frame[raw_frame_index++]=byte; state=C_RCV_S;}
-                        else if (byte==C_DISC){ sendSupervisionFrame(C_DISC); return 0;}
-                        else if (byte==FLAG){ state=FLAG_RCV_S; raw_frame_index=1;}
+                        if (byte==C_expected || byte==C_other){
+                             frame[frameIDX++]=byte;
+                             state=C_RCV_S;
+                        }
+                        else if (byte==C_DISC){ 
+                            sendSupervisionFrame(C_DISC);
+                             return 0;
+                            }
+                        else if (byte==FLAG){ 
+                            state=FLAG_RCV_S;
+                             frameIDX=1;
+                            }
                         else state=START_S;
                         break;
                     case C_RCV_S:{
-                        unsigned char bcc1_calc = raw_frame[1]^raw_frame[2];
-                        if (byte==bcc1_calc){ raw_frame[raw_frame_index++]=byte; data_index=raw_frame_index; state=DATA_RCV_S;}
-                        else if (byte==FLAG){ state=FLAG_RCV_S; raw_frame_index=1;}
+                        unsigned char bcc1_calc = frame[1]^frame[2];
+                        if (byte==bcc1_calc){ 
+                            frame[frameIDX++]=byte; 
+                            data_index=frameIDX; 
+                            state=DATA_RCV_S;
+                        }
+                        else if (byte==FLAG){
+                            state=FLAG_RCV_S; 
+                            frameIDX=1;
+                        }
                         else state=START_S;
                         break;
                     }
-                    case DATA_RCV_S: if (byte==FLAG){ state=STOP_S;} else{ raw_frame[raw_frame_index++]=byte;} break;
+                    case DATA_RCV_S: if (byte==FLAG){
+                        state=STOP_S;
+                    }
+                     else{ 
+                        frame[frameIDX++]=byte;
+                    }
+                    break;
                     case BCC1_RCV_S:
                     case STOP_S: break;
                 }
             }
         }
 
-        int Ns_received = (raw_frame[2]==C_I_1);
+        int Ns_received = (frame[2]==C_I_1);
         if (Ns_received != Nr_expected){
             printf("RX LLREAD: Frame duplicada/inesperada (Ns=%d, Esperado=%d). Enviando RR(%d).\n", Ns_received, Nr_expected, Nr_expected);
             unsigned char C_RR_repeat = (Nr_expected==0)?C_RR_0:C_RR_1;
@@ -533,8 +576,8 @@ int llread(unsigned char *packet){
             return 0;
         }
 
-        int stuffed_data_size = raw_frame_index - data_index;
-        int unstuffed_size = byteDestuffing(raw_frame+data_index, stuffed_data_size, unstuffed_data);
+        int stuffed_data_size = frameIDX - data_index;
+        int unstuffed_size = byteDestuffing(frame+data_index, stuffed_data_size, unstuffed_data);
 
         if (unstuffed_size < 1){
             printf("RX LLREAD: Erro de Destuffing. Enviando REJ(%d).\n", Ns_received);
