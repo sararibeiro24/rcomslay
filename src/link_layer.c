@@ -455,7 +455,7 @@ int llwrite(const unsigned char *buf, int bufSize){
         }
         else if (ack_status == 0){ 
             printf("TX LLWRITE (Ns=%d): REJ recebido. Retransmitindo...\n", Ns);
-            alarmCount++;
+            //alarmCount++;
             alarm(0);
         }
         else if (ack_status == -2){
@@ -463,7 +463,7 @@ int llwrite(const unsigned char *buf, int bufSize){
         }
         else{
             printf("TX LLWRITE (Ns=%d): Frame de ACK inválida. Retransmitindo...\n", Ns);
-            alarmCount++;
+            //alarmCount++;
             alarm(0);
         }
     }
